@@ -15,24 +15,29 @@ type Name = String
 data Term = Var Name
           | App Name [Term]
 
+-- 表示一个替换关系
 type Sub = (Term, Name)
 
 -- implementation --
 
+-- 检查变量 Name 是否出现在 Term 中
 occurs :: Name -> Term -> Bool
 occurs x t = case t of
   (Var y)    -> x==y
   (App _ ts) -> and . map (occurs x) $ ts
 
+-- 使用 Sub 对 Term 进行替换
 sub :: Sub -> Term -> Term
 sub (t1, y) t@(Var a)
   | a==y      = t1
   | otherwise = t
 sub s (App f ts) = App f $ map (sub s) ts
 
+-- 使用 Sub 列表对 Term 进行替换
 subs :: [Sub] -> Term -> Term
 subs ss t = foldl (flip sub) t ss
 
+-- 把两个替换列表组合起来，同时用新加入的替换对其中所有 Term 进行替换
 compose :: [Sub] -> [Sub] -> [Sub]
 compose []     s1 = s1
 compose (s:ss) s1 = compose ss $ s : iter s s1
@@ -40,6 +45,7 @@ compose (s:ss) s1 = compose ss $ s : iter s s1
     iter :: Sub -> [Sub] -> [Sub]
     iter s ss = map (mapFst (sub s)) ss
 
+-- 合一函数
 unify :: Term -> Term -> Maybe [Sub]
 unify t1 t2 = case (t1, t2) of
   (Var x,   Var y)   -> if x==y        then Just [] else Just [(t1, y)]
