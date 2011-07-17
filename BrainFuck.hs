@@ -15,9 +15,9 @@ instance HasDefault Int where
 type CodeP = Zipper Char
 
 data BFState = BFS {
-    dp :: Pointer Int       --' data pointer
-  , cp :: CodeP             --' code pointer
-  , jumpStack :: [CodeP]    --' jump location stack
+    dp :: Pointer Int       -- data pointer
+  , cp :: CodeP             -- code pointer
+  , jumpStack :: [CodeP]    -- jump location stack
 } deriving (Show)
 
 fromCode :: String -> Maybe BFState
@@ -65,7 +65,9 @@ modifyDp f = modify $ \st -> st { dp = f (dp st) }
 
 -- | write c into current data pointer
 writeDp :: Int -> BF ()
-writeDp c = modifyDp $ writeP c
+writeDp c = do
+    modifyDp $ writeP c
+    -- showState
 
 -- | move to next byte code
 nextCp :: BF ()
@@ -113,11 +115,11 @@ eval = forever $ do
         '-' -> modifyDp (modifyP pred) >> nextCp
         '.' -> do
                  c <- readDp
-                 liftIO $ putStr [chr c]
+                 liftIO $ putStr [toEnum c]
                  nextCp
         ',' -> do
                  c <- liftIO getChar
-                 writeDp $ ord c
+                 writeDp $ fromEnum c
                  nextCp
         '[' -> jmpCmd
         ']' -> jmpBackCmd
