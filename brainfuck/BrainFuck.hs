@@ -35,7 +35,7 @@ type BF a = StateT BFState IO a
 
 showState :: BF ()
 showState = do
-    let showMemory = show . concatMap show . map fromEnum
+    let showMemory = show . concatMap show
     st <- get
     let (Pointer rs a xs) = dp st
     liftIO $ putStrLn $ "memory: " ++ (showMemory . reverse) rs ++ " " ++ showMemory [a] ++ " " ++ showMemory xs
@@ -107,7 +107,7 @@ jmpBackCmd = do
 eval :: BF ()
 eval = forever $ do
     c <- fmap (current . cp) get
-    -- liftIO $ print c
+    -- liftIO $ putStr [c]
     case c of
         '>' -> modifyDp nextP >> nextCp
         '<' -> modifyDp prevP >> nextCp
