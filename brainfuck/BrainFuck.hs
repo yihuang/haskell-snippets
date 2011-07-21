@@ -1,11 +1,18 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+import Prelude hiding (catch)
+import Data.Data
 import Data.Char
 import System.IO
-import System.IO.Error
 import System.Environment
+import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Identity
 import ListZipper
+
+data BFException = BFFinish | BFException String
+    deriving (Show, Typeable)
+instance Exception BFException
 
 instance HasDefault Char where
     defaultValue = '\0'
@@ -74,7 +81,7 @@ nextCp :: BF ()
 nextCp = do
     st <- get
     case next (cp st) of
-        Nothing -> fail "finish"
+        Nothing -> liftIO $ throwIO BFFinish
         Just p  -> put st { cp = p }
 
 -- | [
@@ -85,7 +92,7 @@ jmpCmd = do
         then do
             cp' <- fmap cp get
             case nextUntil (==']') cp' of
-                Nothing -> fail "no matching ]"
+                Nothing -> liftIO $ throwIO $ BFException "no matching ]"
                 Just p  -> jumpTo p
         else do
             pushJump
@@ -99,7 +106,7 @@ jmpBackCmd = do
         then do
             mjump <- popJump
             case mjump of
-                Nothing -> fail "no matching ["
+                Nothing -> liftIO $ throwIO $ BFException "no matching ["
                 Just p  -> jumpTo p
         else nextCp
 
@@ -128,12 +135,12 @@ eval = forever $ do
 evalCode :: String -> IO ()
 evalCode code = case fromCode code of
     Just st -> (runStateT eval st >> return ())
-    Nothing -> fail "invalid input"
+    Nothing -> throwIO $ BFException "invalid input"
 
-errorHandle :: IOError -> IO ()
-errorHandle e
-  | isUserError e && ioeGetErrorString e == "finish" = return ()
-  | otherwise = print e
+errorHandle :: BFException -> IO ()
+errorHandle e = case e of
+    BFFinish -> hFlush stdout
+    otherwise -> print e
 
 evalFile :: FilePath -> IO ()
 evalFile file = withFile file ReadMode $ \fp ->
