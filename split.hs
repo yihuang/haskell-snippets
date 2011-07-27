@@ -8,22 +8,21 @@ import System.Environment (getArgs)
 import Control.Monad (mapM_)
 import Control.Applicative ((<$>))
 import Control.Exception (finally)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.ByteString as B
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.Binary as EB
 
-data Status = FileEnd | SizeExceed
+data Status = Error | FileEnd | SizeExceed
 
 iterFileSized :: FilePath
               -> Integer
               -> E.Iteratee B.ByteString IO Status
 iterFileSized path size = do
-    h <- E.tryIO (openBinaryFile path WriteMode)
-    status <- iterHandleSized h size
+    h <- E.tryIO $ openBinaryFile path WriteMode
+    status <- iterHandleSized h size `E.catchError` \e -> E.tryIO (print e) >> return Error
     E.tryIO $ hClose h
     return status
-    -- E.Iteratee $ (E.runIteratee iter) `finally` (hClose h)
 
 iterHandleSized :: MonadIO m => Handle
                              -> Integer
@@ -47,8 +46,8 @@ splitter size outdir = loop 0
         let path = outdir </> show idx
         res <- iterFileSized path size
         case res of
-            FileEnd    -> return ()
             SizeExceed -> loop $ idx + 1
+            _          -> return ()
 
 main = do
     [input, outdir, arg_size] <- getArgs
