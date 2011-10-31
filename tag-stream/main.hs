@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 import Data.List hiding (take)
 import Prelude hiding (take)
 import Control.Monad
@@ -10,11 +10,15 @@ import qualified Data.ByteString.Char8 as S
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 
--- takeTill' :: (Char -> Bool) -> Parser ByteString
--- takeTill' p = do
---     (h, t) <- span p <$> get
---     put t
---     return h
+if' :: a -> a -> Bool -> a
+if' a1 a2 cond = if cond then a1 else a2
+
+splitLast :: [a] -> ([a], a)
+splitLast = loop []
+  where
+    loop acc [] = error "split empty list"
+    loop acc (x:[]) = (reverse acc, x)
+    loop acc (x:xs) = loop (x:acc) xs
 
 data Token' s = TagOpen s
              | TagClose s
@@ -28,39 +32,37 @@ tag :: Parser Token
 tag = do
     string "<"
     s <- takeTill (=='>')
-    end <- atEnd
-    if end
-      then return $ PartialToken $ "<" `mappend` s
-      else do
-        take 1
-        return $ case S.uncons s of
-            Just ('/', s') -> TagClose s'
-            Nothing -> TagOpen S.empty
-            _ -> TagOpen s
+    atEnd >>= if'
+        (return $ PartialToken $ "<" `mappend` s)
+        (do take 1
+            return $ case S.uncons s of
+                Just ('/', s') -> TagClose s'
+                Nothing -> TagOpen S.empty
+                _ -> TagOpen s
+        )
 
 text :: Parser Token
 text = do
     s <- takeTill (=='<')
     if S.null s
-      then empty
-      else return $ Text s
+        then empty
+        else return $ Text s
 
+token :: Parser Token
 token = tag <|> text
 
 html :: Parser [Token]
 html = many token
 
-accum :: ByteString -> ByteString -> Either String (ByteString, [Token])
-accum acc input = handlePartial <$> (parseOnly html $ acc `mappend` input)
+accumParse :: ByteString -> ByteString -> Either String (ByteString, [Token])
+accumParse acc input = splitPartial <$> parseOnly html (acc `mappend` input)
   where
-    handlePartial tokens =
-      if (null tokens)
-        then (S.empty, [])
-        else case last tokens of
-          PartialToken s
-            -> (s, init tokens)
-          _ -> (S.empty, tokens)
+    splitPartial :: [Token] -> (ByteString, [Token])
+    splitPartial [] = (S.empty, [])
+    splitPartial (splitLast -> (init, PartialToken s)) = (s, init)
+    splitPartial tokens = (S.empty, tokens)
 
 main = do
-    let enum = E.enumList 1 ["  <a href=", "\"x", "x\">x", "x</a>"] E.$= EL.concatMapAccumM accum S.empty
-    print $ (E.run_ $ enum E.$$ EL.consume)
+    let toTokens = EL.concatMapAccumM accumParse S.empty
+        enum = E.enumList 2 ["  <a href=", "\"x", "x\">x", "x</a>"]
+    print $ E.run_ $ (enum E.$= toTokens) E.$$ EL.consume
